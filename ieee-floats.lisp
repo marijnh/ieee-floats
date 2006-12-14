@@ -60,9 +60,9 @@ that the in- or output of these functions is not just floating
 point numbers anymore, but also keywords."
   (let* ((total-bits (+ 1 exponent-bits significand-bits))
 	 (exponent-offset (1- (expt 2 (1- exponent-bits)))) ; (A)
-	 (sign-part `(ldb ',(byte 1 (1- total-bits)) bits))
-	 (exponent-part `(ldb ',(byte exponent-bits significand-bits) bits))
-	 (significand-part `(ldb ',(byte significand-bits 0) bits))
+	 (sign-part `(ldb (byte 1 ,(1- total-bits)) bits))
+	 (exponent-part `(ldb (byte ,exponent-bits ,significand-bits) bits))
+	 (significand-part `(ldb (byte ,significand-bits 0) bits))
 	 (nan support-nan-and-infinity-p)
 	 (max-exponent (1- (expt 2 exponent-bits)))) ; (B)
     `(progn
@@ -105,7 +105,7 @@ point numbers anymore, but also keywords."
 				   (t :negative-infinity))))))
            (if (zerop exponent) ; (D)
                (setf exponent 1)
-               (setf (ldb ',(byte 1 significand-bits) significand) 1))
+               (setf (ldb (byte 1 ,significand-bits) significand) 1))
 	   (unless (zerop sign)
 	     (setf significand (- significand)))
 	   (scale-float (float significand ,(if (> total-bits 32) 1.0d0 1.0))
