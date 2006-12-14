@@ -28,14 +28,18 @@
 ;; (B) The maximum possible exponent is reserved for special cases
 ;;     (NaN, infinity).
 ;;
-;; (C) Because decode-float will return a significand between 0 and 1,
-;;     but we want one between 1 and 2 to be able to have a hidden
-;;     bit, we double it and then subtract one (the hidden bit) before
-;;     converting it to integer representation (to adjust for this, 1
-;;     is subtracted from the exponent on the next line).
+;; (C) If the exponent fits in the exponent-bits, we have to adjust
+;;     the significand for the hidden bit. Because decode-float will
+;;     return a significand between 0 and 1, and we want one between 1
+;;     and 2 to be able to hide the hidden bit, we double it and then
+;;     subtract one (the hidden bit) before converting it to integer
+;;     representation (to adjust for this, 1 is subtracted from the
+;;     exponent earlier). When the exponent is too small, we set it to
+;;     zero (meaning no hidden bit, exponent of 1), and adjust the
+;;     significand downward to compensate for this.
 ;;
 ;; (D) Here the hidden bit is added. When the exponent is 0, there is
-;;     no hidden bit (to be able to express 0.0).
+;;     no hidden bit, and the exponent is interpreted as 1.
 ;;
 ;; (E) Here the exponent offset is subtracted, but also an extra
 ;;     factor to account for the fact that the bits stored in the
@@ -75,14 +79,13 @@ point numbers anymore, but also keywords."
                     (values 0 0 0))
                    (t
                     (multiple-value-bind (significand exponent sign) (decode-float float)
-                      (values (if (= sign 1.0) 0 1)
-                              (round (* ,(expt 2 significand-bits) ; (C)
-                                        (1- (* significand 2))))
-                              (+ (1- exponent) ,exponent-offset)))))
-           (unless (>= exponent 0)
-             (error "Floating point underflow when encoding ~A." float))
-           (unless (< exponent ,(expt 2 exponent-bits))
-             (error "Floating point overflow when encoding ~A." float))
+                      (let ((exponent (+ (1- exponent) ,exponent-offset))
+                            (sign (if (= sign 1.0) 0 1)))
+                        (unless (< exponent ,(expt 2 exponent-bits))
+                          (error "Floating point overflow when encoding ~A." float))
+                        (if (< exponent 0) ; (C)
+                            (values sign (ash (round (* ,(expt 2 significand-bits) significand)) exponent) 0)
+                            (values sign (round (* ,(expt 2 significand-bits) (1- (* significand 2)))) exponent))))))
 	   (let ((bits 0))
 	     (declare (type (unsigned-byte ,total-bits) bits))
 	     (setf ,sign-part sign
@@ -100,8 +103,9 @@ point numbers anymore, but also keywords."
 			     (cond ((not (zerop significand)) :not-a-number)
 				   ((zerop sign) :positive-infinity)
 				   (t :negative-infinity))))))
-	   (unless (zerop exponent) ; (D)
-	     (incf significand ,(expt 2 significand-bits)))
+           (if (zerop exponent) ; (D)
+               (setf exponent 1)
+               (setf (ldb ',(byte 1 significand-bits) significand) 1))
 	   (unless (zerop sign)
 	     (setf significand (- significand)))
 	   (scale-float (float significand ,(if (> total-bits 32) 1.0d0 1.0))
