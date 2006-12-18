@@ -3,15 +3,22 @@
 
 (in-package :ieee-floats-tests)
 
-;; After loading, run the tests with (run! 'ieee-floats)
+;; After loading, run the tests with (fiveam:run! :ieee-floats)
 
-(def-suite ieee-floats)
-(in-suite ieee-floats)
+;; The tiny-XX tests will error on systems that do not support 64-bit
+;; floats, CLISP is one of those.
+
+(def-suite :ieee-floats)
+(in-suite :ieee-floats)
 
 (defmacro pairs-correspond (decode encode &body pairs)
   `(progn ,@(loop :for (float bits) :in pairs
                   :collect `(is (eql ,float (,decode ,bits)))
                   :collect `(is (eql ,bits (,encode ,float))))))
+
+(def-fixture special-converters ()
+  (make-float-converters encode-float64* decode-float64* 11 52 t)
+  (make-float-converters encode-float32* decode-float32* 8 23 t))
 
 (test sanity-32
   (pairs-correspond decode-float32 encode-float32
@@ -29,15 +36,14 @@
   (signals error
     (encode-float32 1.0d60)))
 
-(make-float-converters encode-float32* decode-float32* 8 23 t)
-
 (test specials-32
-  (pairs-correspond decode-float32* encode-float32*
-    (5.0e2              #b01000011111110100000000000000000)
-    (-5.0e-2            #b10111101010011001100110011001101)
-    (:not-a-number      #b01111111100000000000000000000001)
-    (:positive-infinity #b01111111100000000000000000000000)
-    (:negative-infinity #b11111111100000000000000000000000)))
+  (with-fixture special-converters ()
+    (pairs-correspond decode-float32* encode-float32*
+      (5.0e2              #b01000011111110100000000000000000)
+      (-5.0e-2            #b10111101010011001100110011001101)
+      (:not-a-number      #b01111111100000000000000000000001)
+      (:positive-infinity #b01111111100000000000000000000000)
+      (:negative-infinity #b11111111100000000000000000000000))))
 
 (test sanity-64
   (pairs-correspond decode-float64 encode-float64
@@ -50,12 +56,11 @@
   (pairs-correspond decode-float64 encode-float64
     (4.1995579896505956d-322 #b0000000000000000000000000000000000000000000000000000000001010101)))
 
-(make-float-converters encode-float64* decode-float64* 11 52 t)
-
 (test specials-64
-  (pairs-correspond decode-float64* encode-float64*
-    (42d42              #b0100100011111110001000100010111010000010011001101101001001111111)
-    (-42d42             #b1100100011111110001000100010111010000010011001101101001001111111)
-    (:not-a-number      #b0111111111110000000000000000000000000000000000000000000000000001)
-    (:positive-infinity #b0111111111110000000000000000000000000000000000000000000000000000)
-    (:negative-infinity #b1111111111110000000000000000000000000000000000000000000000000000)))
+  (with-fixture special-converters ()
+    (pairs-correspond decode-float64* encode-float64*
+      (42d42              #b0100100011111110001000100010111010000010011001101101001001111111)
+      (-42d42             #b1100100011111110001000100010111010000010011001101101001001111111)
+      (:not-a-number      #b0111111111110000000000000000000000000000000000000000000000000001)
+      (:positive-infinity #b0111111111110000000000000000000000000000000000000000000000000000)
+      (:negative-infinity #b1111111111110000000000000000000000000000000000000000000000000000))))
