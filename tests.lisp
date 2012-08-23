@@ -31,6 +31,10 @@
 (test tiny-32
   (pairs-correspond decode-float32 encode-float32
     (9.949219e-44 #b00000000000000000000000001000111)))
+
+(test tiny-16
+  (dolist (n '(#b0000001111111111 #b0000001100000000 #b0000001000000000))
+    (is (eql n (encode-float16 (decode-float16 n))))))
       
 (test overflow-32
   (signals error

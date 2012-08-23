@@ -83,7 +83,7 @@ point numbers anymore, but also keywords."
                             (sign (if (= sign 1.0) 0 1)))
                         (unless (< exponent ,(expt 2 exponent-bits))
                           (error "Floating point overflow when encoding ~A." float))
-                        (if (< exponent 0) ; (C)
+                        (if (<= exponent 0) ; (C)
                             (values sign (ash (round (* ,(expt 2 significand-bits) significand)) exponent) 0)
                             (values sign (round (* ,(expt 2 significand-bits) (1- (* significand 2)))) exponent))))))
 	   (let ((bits 0))
