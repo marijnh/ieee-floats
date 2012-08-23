@@ -6,5 +6,5 @@
   :components ((:file "ieee-floats")))
 
 (defsystem :ieee-floats-tests
-  :depends-on (:ieee-floats :fiveam)
+  :depends-on (:ieee-floats :eos)
   :components ((:file "tests")))
