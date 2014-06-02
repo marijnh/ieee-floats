@@ -75,8 +75,6 @@ point numbers anymore, but also keywords."
                                   (values 0 0 ,max-exponent))
                                  ((eq float :negative-infinity)
                                   (values 1 0 ,max-exponent))))
-                   ((zerop float)
-                    (values 0 0 0))
                    (t
                     (multiple-value-bind (significand exponent sign) (decode-float float)
                       (let ((exponent (+ (1- exponent) ,exponent-offset))
@@ -103,13 +101,12 @@ point numbers anymore, but also keywords."
 			     (cond ((not (zerop significand)) :not-a-number)
 				   ((zerop sign) :positive-infinity)
 				   (t :negative-infinity))))))
-           (if (zerop exponent) ; (D)
+           (if (zerop exponent)         ; (D)
                (setf exponent 1)
                (setf (ldb (byte 1 ,significand-bits) significand) 1))
-	   (unless (zerop sign)
-	     (setf significand (- significand)))
-	   (scale-float (float significand ,(if (> total-bits 32) 1.0d0 1.0))
-			(- exponent ,(+ exponent-offset significand-bits)))))))) ; (E)
+           (let ((float-significand (float significand ,(if (> total-bits 32) 1.0d0 1.0))))
+             (scale-float (if (zerop sign) float-significand (- float-significand))
+                          (- exponent ,(+ exponent-offset significand-bits))))))))) ; (E)
 
 ;; And instances of the above for the common forms of floats.
 (make-float-converters encode-float32 decode-float32 8 23 nil)
