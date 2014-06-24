@@ -77,7 +77,9 @@ point numbers anymore, but also keywords."
                                   (values 1 0 ,max-exponent))))
                    (t
                     (multiple-value-bind (significand exponent sign) (decode-float float)
-                      (let ((exponent (+ (1- exponent) ,exponent-offset))
+                      (let ((exponent (if (= 0 significand)
+                                          exponent
+                                          (+ (1- exponent) ,exponent-offset)))
                             (sign (if (= sign 1.0) 0 1)))
                         (unless (< exponent ,(expt 2 exponent-bits))
                           (error "Floating point overflow when encoding ~A." float))
