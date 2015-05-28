@@ -106,7 +106,7 @@ point numbers anymore, but also keywords."
            (if (zerop exponent)         ; (D)
                (setf exponent 1)
                (setf (ldb (byte 1 ,significand-bits) significand) 1))
-           (let ((float-significand (float significand ,(if (> total-bits 32) 1.0d0 1.0))))
+           (let ((float-significand (float significand ,(if (> total-bits 32) 1.0d0 1.0f0))))
              (scale-float (if (zerop sign) float-significand (- float-significand))
                           (- exponent ,(+ exponent-offset significand-bits))))))))) ; (E)
 
