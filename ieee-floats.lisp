@@ -111,6 +111,7 @@ point numbers anymore, but also keywords."
                           (- exponent ,(+ exponent-offset significand-bits))))))))) ; (E)
 
 ;; And instances of the above for the common forms of floats.
+(declaim (inline encode-float32 decode-float32 encode-float64 decode-float64))
 (make-float-converters encode-float32 decode-float32 8 23 nil)
 (make-float-converters encode-float64 decode-float64 11 52 nil)
 
