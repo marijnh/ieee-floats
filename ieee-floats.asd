@@ -1,7 +1,3 @@
-(defpackage :ieee-floats-system
-  (:use :common-lisp :asdf))
-(in-package :ieee-floats-system)
-
 (defsystem :ieee-floats
   :components ((:file "ieee-floats")))
 
