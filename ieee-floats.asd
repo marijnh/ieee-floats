@@ -6,6 +6,6 @@
   :description "Convert floating point values to IEEE 754 binary representation"
   :author "Marijn Haverbeke <marijnh@gmail.com>"
   :license "BSD"
-  :depends-on (:ieee-floats :eos)
+  :depends-on (:ieee-floats :fiveam)
   :components ((:file "tests"))
-  :perform (test-op (o s) (uiop:symbol-call :eos '#:run! :ieee-floats)))
+  :perform (test-op (o s) (uiop:symbol-call :fiveam '#:run! :ieee-floats)))
