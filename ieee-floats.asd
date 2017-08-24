@@ -1,5 +1,5 @@
 (defsystem :ieee-floats
-  :components ((:file "ieee-floats")))
+  :components ((:file "ieee-floats"))
   :in-order-to ((test-op (test-op "ieee-floats-tests"))))
 
 (defsystem :ieee-floats-tests
