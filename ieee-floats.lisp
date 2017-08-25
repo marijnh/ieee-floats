@@ -81,11 +81,29 @@ point numbers anymore, but also keywords."
                                           exponent
                                           (+ (1- exponent) ,exponent-offset)))
                             (sign (if (= sign 1.0) 0 1)))
-                        (unless (< exponent ,(expt 2 exponent-bits))
-                          (error "Floating point overflow when encoding ~A." float))
+
+                        ;; AVOID OVERFLOW for tests
+                        ;; (unless (< exponent ,(expt 2 exponent-bits))
+                        ;;   (error "Floating point overflow when encoding ~A." float))
+                        ;;
+                        ;; Leads to POSITIVE-INFINITY instead of overflowing
+                        (setf exponent (min exponent ,max-exponent))
+                        
                         (if (<= exponent 0) ; (C)
-                            (values sign (ash (round (* ,(expt 2 significand-bits) significand)) exponent) 0)
-                            (values sign (round (* ,(expt 2 significand-bits) (1- (* significand 2)))) exponent))))))
+                            (values sign (ash
+                                          ;; right shift: check if greater or
+                                          ;; equal than significand-bits in abs
+                                          ;; value. If so, we have an underflow?
+                                          ;;
+                                          ;; also, the secondary return value
+                                          ;; from round can be useful to know
+                                          ;; how much precision we lose.
+                                          (round (* ,(expt 2 significand-bits) significand))
+                                          exponent) 0)
+                            (values sign
+                                    (round (* ,(expt 2 significand-bits)
+                                              (1- (* significand 2))))
+                                    exponent))))))
 	   (let ((bits 0))
 	     (declare (type (unsigned-byte ,total-bits) bits))
 	     (setf ,sign-part sign
@@ -112,7 +130,7 @@ point numbers anymore, but also keywords."
 
 ;; And instances of the above for the common forms of floats.
 (declaim (inline encode-float32 decode-float32 encode-float64 decode-float64))
-(make-float-converters encode-float32 decode-float32 8 23 nil)
+(make-float-converters encode-float32 decode-float32 8 23 t)
 (make-float-converters encode-float64 decode-float64 11 52 nil)
 
 ;;; Copyright (c) 2006 Marijn Haverbeke

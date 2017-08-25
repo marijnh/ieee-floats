@@ -2,6 +2,7 @@
   :description "Convert floating point values to IEEE 754 binary representation"
   :author "Marijn Haverbeke <marijnh@gmail.com>"
   :license "BSD"
+  :depends-on (:alexandria)
   :components ((:file "ieee-floats"))
   :in-order-to ((test-op (test-op "ieee-floats-tests"))))
 
