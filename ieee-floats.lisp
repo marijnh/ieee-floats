@@ -13,6 +13,62 @@
 
 (in-package :ieee-floats)
 
+(let ((api-documentation "
+
+If SUPPORT-NAN-AND-INFINITY-P is true, the decoder will
+also understand these special cases and return symbols for
+special floating point values: NaN is represented
+as :NOT-A-NUMBER, and the infinities as :POSITIVE-INFINITY
+and :NEGATIVE-INFINITY. In other words, it is not just
+floating point numbers anymore, but also keywords.
+
+If SUPPORT-NAN-AND-INFINITY-P is :SECONDARY, then the bits
+are always decoded as a floating point value, and the
+secondary value is either NIL or one of above symbols
+representing special float values.
+
+SUPPORT-NAN-AND-INFINITY-P different from NIL also means
+that the encoding function accepts those symbols as
+inputs. "))
+
+  (flet ((extend-documentation (name)
+           (prog1 name
+             (setf (documentation name 'function)
+                   (concatenate 'string
+                                (or (documentation name 'function) "")
+                                api-documentation)))))
+    (extend-documentation
+     (defmacro with-float-converters
+         ((encoder-name decoder-name
+           exponent-bits-form significand-bits-form
+           &optional (support-nan-and-infinity-p-form))
+          &body body)
+       "Temporarily bind DECODER-NAME and ENCODER-NAME to
+floating point conversion functions with the given amount of
+exponent and significand bits (plus an extra sign bit)."
+       (assemble-converters-parts% `(:local ,@body)
+                                   decoder-name
+                                   encoder-name
+                                   exponent-bits-form
+                                   significand-bits-form
+                                   support-nan-and-infinity-p-form)))
+
+    (extend-documentation
+     (defmacro make-float-converters (encoder-name
+                                      decoder-name
+                                      exponent-bits-form
+                                      significand-bits-form
+                                      support-nan-and-infinity-p-form)
+       "Writes an encoder and decoder function for floating point
+numbers with the given amount of exponent and significand
+bits (plus an extra sign bit)." 
+       (assemble-converters-parts% :global
+                                   decoder-name
+                                   encoder-name
+                                   exponent-bits-form
+                                   significand-bits-form
+                                   support-nan-and-infinity-p-form)))))
+
 ;; The following macro may look a bit overcomplicated to the casual
 ;; reader. The main culprit is the fact that NaN and infinity can be
 ;; optionally included, which adds a bunch of conditional parts.
@@ -83,8 +139,8 @@ point numbers anymore, but also keywords."
                             (sign (if (= sign 1.0) 0 1)))
 
                         ;; AVOID OVERFLOW for tests
-                        ;; (unless (< exponent ,(expt 2 exponent-bits))
-                        ;;   (error "Floating point overflow when encoding ~A." float))
+                        (unless (< exponent ,max-exponent)
+                          (error "Floating point overflow when encoding ~A." float))
                         ;;
                         ;; Leads to POSITIVE-INFINITY instead of overflowing
                         (setf exponent (min exponent ,max-exponent))
@@ -99,8 +155,10 @@ point numbers anymore, but also keywords."
                                           ;; from round can be useful to know
                                           ;; how much precision we lose.
                                           (round (* ,(expt 2 significand-bits) significand))
-                                          exponent) 0)
+                                          exponent)
+                                    0)
                             (values sign
+                                    ;; round can go up to 16 !! large difference with actual value
                                     (round (* ,(expt 2 significand-bits)
                                               (1- (* significand 2))))
                                     exponent))))))
@@ -131,7 +189,15 @@ point numbers anymore, but also keywords."
 ;; And instances of the above for the common forms of floats.
 (declaim (inline encode-float32 decode-float32 encode-float64 decode-float64))
 (make-float-converters encode-float32 decode-float32 8 23 t)
-(make-float-converters encode-float64 decode-float64 11 52 nil)
+(make-float-converters encode-float64 decode-float64 11 52 :secondary)
+
+;; ;; => :not-a-number
+;; (with-float-converters (dec enc 20 20 t)
+;;   (dec (enc :not-a-number)))
+
+;; ;; overflow from scale-float
+;; (with-float-converters (dec enc 20 20 :secondary)
+;;   (dec (enc :not-a-number)))
 
 ;;; Copyright (c) 2006 Marijn Haverbeke
 ;;;
