@@ -14,7 +14,11 @@
              (setf (ldb (byte 1 (1- total-bits)) bits) sign
                    (ldb (byte exponent-bits significand-bits) bits) exponent
                    (ldb (byte significand-bits 0) bits) significand)
-             (values bits remainder)))
+             (values bits (typecase remainder
+                            (symbol remainder)
+                            (number (case sign
+                                      (0 remainder)
+                                      (1 (- remainder))))))))
       (if (and special-values-p (symbolp float))
           (ecase float
             (:not-a-number      (encode 0 1 max-exponent 0.0))
@@ -25,8 +29,6 @@
                   (biased-exponent (if (= 0 original-significand)
                                        exponent
                                        (+ exponent exponent-offset -1))))
-
-              ;; First compute the significand and remainder, then adjust
               (multiple-value-bind (significand remainder)
                   (cond
                     ;; overflow
@@ -54,8 +56,7 @@
                                                        significand-bits))))))
 
                 ;; Adjust so that we round up to the next exponent in
-                ;; the target format. The remainder is still the same,
-                ;; that's why it was computed first.
+                ;; the target format.
                 (when (= significand significand-overflow)
                   (incf biased-exponent)
                   (setf significand 0))
@@ -74,7 +75,7 @@
                    (encode sign significand  0 remainder))
                   
                   ;; UNDERFLOW
-                  (t (encode sign 0 0 float))))))))))))
+                  (t (encode sign 0 0 (abs float)))))))))))))
 
 (define-symbol-macro @
     (values
@@ -83,6 +84,56 @@
      (length *cases*)))
 
 (defun @ (x) (elt *cases* x))
+
+(defun float-dice (exponent)
+  (let ((offset (- (expt 2 (1- exponent))))
+        (width (float (expt 2 exponent))))
+    (lambda ()
+      (+ (random width) offset))))
+
+(defparameter *check-nearest-encoding* nil)
+
+(defun back-and-forth-p (float decoder exponent-bits significand-bits)
+  (multiple-value-bind (bits difference)
+      (encode float exponent-bits significand-bits t)
+    (let* ((total-bits (+ 1 exponent-bits significand-bits))
+           (decoded (funcall decoder bits))
+           (up (funcall decoder (mod (1+ bits) total-bits)))
+           (down (funcall decoder (mod (1- bits) total-bits)))
+           (adjusted (+ decoded difference)))
+      (values  
+       (case difference
+         (:overflow t)
+         (t
+          (assert (= float adjusted))
+          (when *check-nearest-encoding*
+            (assert (>= (abs (- up float)) difference) (up))
+            (assert (>= (abs (- float down)) difference) (down)))
+          T))
+       float
+       bits
+       decoded
+       difference
+       adjusted))))
+
+(defun make-back-and-forth-p (exponent-bits significand-bits)
+  (with-float-converters (_ dec exponent-bits significand-bits nil)
+    (lambda (float)
+      (back-and-forth-p float #'dec exponent-bits significand-bits))))
+
+(defun back-and-forth (times exp sig)
+  (loop
+    with dice = (float-dice exp)
+    with test = (make-back-and-forth-p exp sig)
+    repeat times
+    for float = (funcall dice)
+    do (assert (funcall  test float))
+    finally (return t)))
+
+;;(back-and-forth 10000 4 4)
+;; T => encoding + difference returns original float.
+;; however, it does not always give the best encoding,
+;; see *check-nearest-encoding*
 
 (defun test-back-and-forth (times exp sig)
   (with-float-converters (enc dec . #1=(exp sig nil))
@@ -107,9 +158,25 @@
           when failure
             collect failure)))
 
+;; Overflow maps to INFINITY But values that can be expressible in the
+;; range of the float are encoded, notably NaN.
 
+;; float (target)
+;; ^
+;; |                             .....
+;; |
+;; |                       === normalized
+;; | ==========         === -INF
+;; |                 === nan
+;; |              === nan 
+;; |           === nan
+;; |
+;; +-----------[#############################---> float (source)
+;;
+;;             ^ most negative float in the target encoding
+;;         
 
-(with-open-file (out #P"/home/chris/tmp/floats.data"
+(with-open-file (out #P"/tmp/floats.data"
                      :direction :output
                      :if-exists :supersede)
   (with-float-converters (enc dec 2 3 :secondary)
