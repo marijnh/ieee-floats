@@ -1,10 +1,16 @@
+(in-package :ieee-floats)
+
 (defun encode (float exponent-bits significand-bits special-values-p)
   (declare (type (or float (member
                             :not-a-number
                             :positive-infinity
                             :negative-infinity))
                  float)
-           (optimize (debug 3) (speed 1) (space 1) (safety 3)))
+           (optimize (debug 3)
+                     (speed 0)
+                     (space 0)
+                     (safety 3)
+                     (compilation-speed 3)))
   (let ((total-bits (+ 1 exponent-bits significand-bits))
         (exponent-offset  (1- (expt 2 (1- exponent-bits))))
         (significand-overflow (expt 2 significand-bits))
@@ -71,19 +77,11 @@
                    (encode sign significand biased-exponent remainder))
 
                   ;; DENORMALIZED
-                  ((> biased-exponent (- significand-bits))
-                   (encode sign significand  0 remainder))
+                  ;; ((> biased-exponent (- significand-bits))
+                  ;;  (encode sign significand  0 remainder))
                   
-                  ;; UNDERFLOW
-                  (t (encode sign 0 0 (abs float)))))))))))))
-
-(define-symbol-macro @
-    (values
-     (defparameter *cases*
-       (coerce (test-back-and-forth 1000000 4 4) 'vector))
-     (length *cases*)))
-
-(defun @ (x) (elt *cases* x))
+                  ;; UNDERFLOW (OR DENORMALIZED)
+                  (t (encode sign significand 0 remainder))))))))))
 
 (defun float-dice (exponent)
   (let ((offset (- (expt 2 (1- exponent))))
@@ -91,7 +89,7 @@
     (lambda ()
       (+ (random width) offset))))
 
-(defparameter *check-nearest-encoding* nil)
+(defparameter *check-nearest-encoding* t)
 
 (defun back-and-forth-p (float decoder exponent-bits significand-bits)
   (multiple-value-bind (bits difference)
@@ -104,12 +102,13 @@
       (values  
        (case difference
          (:overflow t)
-         (t
-          (assert (= float adjusted))
-          (when *check-nearest-encoding*
-            (assert (>= (abs (- up float)) difference) (up))
-            (assert (>= (abs (- float down)) difference) (down)))
-          T))
+         (t (restart-case
+                (prog1 T
+                  (assert (= float adjusted))
+                  (when *check-nearest-encoding*
+                    (assert (>= (abs (- up float)) difference) (up))
+                    (assert (>= (abs (- float down)) difference) (down))))
+              (ignore () :report "Ignore this assertion" nil))))
        float
        bits
        decoded
@@ -127,38 +126,19 @@
     with test = (make-back-and-forth-p exp sig)
     repeat times
     for float = (funcall dice)
-    do (assert (funcall  test float))
-    finally (return t)))
+    for success = (funcall test float)
+    unless success
+      collect float))
 
-;;(back-and-forth 10000 4 4)
+(back-and-forth 1000000 4 4)
+
+(proclaim '(optimize (debug 3)))
+
 ;; T => encoding + difference returns original float.
 ;; however, it does not always give the best encoding,
 ;; see *check-nearest-encoding*
 
-(defun test-back-and-forth (times exp sig)
-  (with-float-converters (enc dec . #1=(exp sig nil))
-    (loop repeat times
-          for float = (* (expt 2 4) (random 0.1d0))
-          for failure = (multiple-value-bind (bits remain)
-                            (encode float . #1#)
-                          (unless (symbolp remain)
-                            (let* ((decoded (dec bits))
-                                   (adjusted (+ remain decoded)))
-                              (unless (= adjusted float)
-                                (let* ((difference (- decoded float))
-                                       (result (list :float float
-                                                     :bits bits
-                                                     :remain remain
-                                                     :decoded decoded
-                                                     :adjusted adjusted
-                                                     :difference difference)))
-                                  (when (> difference 5)
-                                    (warn "~S" result))
-                                  result)))))
-          when failure
-            collect failure)))
-
-;; Overflow maps to INFINITY But values that can be expressible in the
+;; Overflow maps to INFINITY but values that can be expressible in the
 ;; range of the float are encoded, notably NaN.
 
 ;; float (target)

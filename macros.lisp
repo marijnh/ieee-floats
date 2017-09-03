@@ -5,6 +5,9 @@
 
 (in-package :ieee-floats)
 
+(import 'alexandria:ensure-list)
+(import 'alexandria:with-gensyms)
+
 (defun make-converters-parts%
     (exponent-bits
      significand-bits
