@@ -91,9 +91,10 @@
 
 (defparameter *check-nearest-encoding* t)
 
-(defun back-and-forth-p (float decoder exponent-bits significand-bits)
+
+(defun back-and-forth-p (float encoder decoder exponent-bits significand-bits)
   (multiple-value-bind (bits difference)
-      (encode float exponent-bits significand-bits t)
+      (funcall encoder float)
     (let* ((total-bits (+ 1 exponent-bits significand-bits))
            (decoded (funcall decoder bits))
            (up (funcall decoder (mod (1+ bits) total-bits)))
@@ -115,24 +116,74 @@
        difference
        adjusted))))
 
-(defun make-back-and-forth-p (exponent-bits significand-bits)
+(defun make-back-and-forth-p (exponent-bits significand-bits encoder)
   (with-float-converters (_ dec exponent-bits significand-bits nil)
     (lambda (float)
-      (back-and-forth-p float #'dec exponent-bits significand-bits))))
+      (back-and-forth-p float encoder #'dec exponent-bits significand-bits))))
 
-(defun back-and-forth (times exp sig)
+(defun make-encoder-closure (exponent-bits significand-bits special-p)
+  (lambda (float)
+    (encode float exponent-bits significand-bits special-p)))
+
+(defun make-encoder-closure-for-original (original-encoder original-decoder)
+  (lambda (float)
+    (let* ((encoded (funcall original-encoder float))
+           (decoded (funcall original-decoder encoded)))
+      (values encoded (- float decoded)))))
+
+(defun back-and-forth (times exp sig encoder)
   (loop
     with dice = (float-dice exp)
-    with test = (make-back-and-forth-p exp sig)
+    with test = (make-back-and-forth-p exp sig encoder)
     repeat times
     for float = (funcall dice)
-    for success = (funcall test float)
+    for success = (restart-case (funcall test float)
+                    (stop-loop () (loop-finish)))
     unless success
       collect float))
 
-(back-and-forth 1000000 4 4)
+(back-and-forth 1000000 4 4 (make-encoder-closure 4 4 t))
 
-(proclaim '(optimize (debug 3)))
+
+(make-float-converters encode-float9 decode-float9 4 4 nil)
+
+
+(let ((*check-nearest-encoding* nil))
+  (back-and-forth 1000000 4 4 (make-encoder-closure-for-original
+                               #'encode-float9
+                               #'decode-float9)))
+
+(let ((*check-nearest-encoding* t))
+  (let ((counter 100))
+    (handler-bind ((simple-error
+                     (lambda (e)
+                       (unless (plusp (decf counter))
+                         (invoke-restart 'stop-loop))
+                       (invoke-restart 'ignore))))
+      (back-and-forth 1000000 4 4 (make-encoder-closure-for-original
+                                   #'encode-float9
+                                   #'decode-float9)))))
+
+;; (8.6021423e-4 0.0036010742 0.002796173 0.004436493 0.0034637451 0.004453659
+;;  0.0034637451 0.004486084 0.0035629272 0.015457153 0.015623093 0.0055770874
+;;  0.0037574768 0.002527237 0.015363693 0.0155239105 0.0018692017 0.01533699
+;;  0.0045433044 0.0065784454 5.760193e-4 0.0024681091 0.0015735626 0.004419327
+;;  0.015584946 0.002603531 0.0045280457 0.0035076141 0.015417099 0.005470276
+;;  0.002790451 0.003440857 0.0026950836 0.005525589 0.0026664734 0.0054092407
+;;  0.015407562 6.2179565e-4 0.0054779053 0.015417099 0.005437851 0.0017356873
+;;  0.0065841675 0.00551033 5.5503845e-4 0.0044994354 0.004535675 5.893707e-4
+;;  0.0014705658 0.006450653 0.0034942627 5.3215027e-4 0.0065517426 0.0025806427
+;;  0.0054740906 0.0045757294 0.006351471 0.005428314 0.015485764 0.0075588226
+;;  6.008148e-4 0.0015850067 9.3078613e-4 0.0037822723 0.005422592 0.0074825287
+;;  0.0015068054 0.0025424957 0.015506744 6.1035156e-4 6.980896e-4 0.0025100708
+;;  0.01540947 0.0018081665 0.00646019 0.0074443817 0.0015220642 0.00447464
+;;  0.0024852753 0.006559372 0.0017566681 0.007347107 0.006587982 0.0025119781
+;;  0.0026359558 0.0036373138 0.015331268 0.0016994476 0.0016727448 9.098053e-4
+;;  0.0015125275 0.002571106 0.0037574768 0.002576828 0.0035362244 0.004512787
+;;  0.0055732727 0.0064907074 0.0154953)
+
+
+
 
 ;; T => encoding + difference returns original float.
 ;; however, it does not always give the best encoding,
