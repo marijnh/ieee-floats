@@ -1,83 +1,88 @@
 (in-package :ieee-floats)
 
-(defun encode (float exponent-bits significand-bits special-values-p)
-  (declare (type (or float (member
-                            :not-a-number
-                            :positive-infinity
-                            :negative-infinity))
-                 float))
-  (let ((total-bits (+ 1 exponent-bits significand-bits))
-        (exponent-offset  (1- (expt 2 (1- exponent-bits))))
-        (max-significand (expt 2 significand-bits))
-        (extra-significand-bits (1+ significand-bits))
-        (max-exponent (1- (expt 2 exponent-bits))))
-    (flet ((encode (sign significand exponent remainder &aux (bits 0))
-             (declare (type unsigned-byte bits))
-             (setf (ldb (byte 1 (1- total-bits)) bits) sign
-                   (ldb (byte exponent-bits significand-bits) bits) exponent
-                   (ldb (byte significand-bits 0) bits) significand)
-             (values bits (typecase remainder
-                            (symbol remainder)
-                            (number (case sign
-                                      (0 remainder)
-                                      (1 (- remainder)))))))
-           (overflowp (exponent)
-             ;; >= means NaN too are considered overflow.
-             ;; > means that we accept values which encode NaN.
-             ;; This probably depends on special-values-p?
-             (>= exponent max-exponent)))
-      (if (and special-values-p (symbolp float))
-          (ecase float
-            (:not-a-number      (encode 0 1 max-exponent 0.0))
-            (:positive-infinity (encode 0 0 max-exponent 0.0))
-            (:negative-infinity (encode 1 0 max-exponent 0.0)))
-          (multiple-value-bind (original-significand exponent sign)
-              (decode-float float)
-            (let ((sign (if (= sign 1.0) 0 1)))
-              (if (= 0 original-significand)
-                  (encode sign 0 0 0)
-                  (let ((biased-exponent (+ exponent exponent-offset -1)))
-                    (if (overflowp biased-exponent)
-                        #1=(encode sign 0 max-exponent :overflow)
-                        (multiple-value-bind (significand remainder)
-                            (cond
-                               ;; normalized
-                              ((plusp biased-exponent)
-                               (multiple-value-bind (sig rem)
-                                   (round
-                                    (- (scale-float original-significand
-                                                    extra-significand-bits)
-                                       max-significand))
-                                 (values sig (scale-float
-                                              rem (- exponent
-                                                     extra-significand-bits)))))
-                              (:denormalized
-                               (multiple-value-bind (sig rem)
-                                   (round
-                                    (scale-float
-                                     original-significand
-                                     (+ significand-bits biased-exponent)))
-                                 (values sig (scale-float
-                                              rem (- 1
-                                                     exponent-offset
-                                                     significand-bits))))))
+;; TODO Use float-radix (usually 2)
+;; TODO Use float-precision (usually 24)?
+;; TODO Can we use integer-decode-float instead?
 
-                          ;; ROUND can lead to MAX-SIGNIFICAND, which
-                          ;; would reset all bits to zero (loss of
-                          ;; accuracy); instead, we go up to the next
-                          ;; representable float.
+(defun encode
+    (float exponent-bits significand-bits
+     &aux
+       (total-bits (+ 1 exponent-bits significand-bits))
+       (exponent-offset (1- (expt 2 (1- exponent-bits))))
+       (max-significand (expt 2 significand-bits))
+       (extra-significand-bits (1+ significand-bits))
+       (max-exponent (1- (expt 2 exponent-bits))))
+  "Generic encoding function"
+  (declare
+   (type (or float
+             (member :not-a-number
+                     :positive-infinity
+                     :negative-infinity)) float))
+  (flet ((encode (sign significand exponent remainder &aux (bits 0))
+           (declare (type unsigned-byte bits))
+           (setf (ldb (byte 1 (1- total-bits)) bits) sign
+                 (ldb (byte exponent-bits significand-bits) bits) exponent
+                 (ldb (byte significand-bits 0) bits) significand)
+           (values bits (typecase remainder
+                          (symbol remainder)
+                          (number (case sign
+                                    (0 remainder)
+                                    (1 (- remainder))))))))
+    (case float
+      (:not-a-number      (encode 0 1 max-exponent 0.0))
+      (:positive-infinity (encode 0 0 max-exponent 0.0))
+      (:negative-infinity (encode 1 0 max-exponent 0.0))
+      (t (multiple-value-bind (original-significand exponent sign)
+             (decode-float float)
 
-                          (when (= significand max-significand)
-                            (incf biased-exponent)
-                            (setf significand 0))
+           ;; Adjust sign
+           (setf sign (if (= sign 1.0) 0 1))
 
-                          (if (overflowp biased-exponent)
-                              #1#
-                              ;; other cases (underflow, normalized, denormalized)
-                              (encode sign
-                                      significand
-                                      (max 0 biased-exponent)
-                                      remainder))))))))))))
+           (if (zerop original-significand)
+               (encode sign 0 0 0)
+               (let ((biased-exponent (+ exponent exponent-offset -1)))
+                 (macrolet
+                     ((check-overflow ()
+                        ;; >= means NaN too are considered
+                        ;; > overflow.  means that we accept
+                        ;; > values which encode NaN.
+                        '(when (>= biased-exponent max-exponent)
+                          (return-from encode
+                            (encode sign 0 max-exponent :overflow)))))
+                   (check-overflow)
+                   (multiple-value-bind (significand remainder)
+                       (if (plusp biased-exponent)
+                           (multiple-value-bind (sig rem)
+                               (round (- (scale-float original-significand
+                                                      extra-significand-bits)
+                                         max-significand))
+                             (values sig (scale-float
+                                          rem (- exponent
+                                                 extra-significand-bits))))
+                           (multiple-value-bind (sig rem)
+                               (round (scale-float original-significand
+                                                   (+ significand-bits
+                                                      biased-exponent)))
+                             (values sig
+                                     (scale-float rem (- 1
+                                                         exponent-offset
+                                                         significand-bits)))))
+                     
+                     ;; ROUND can lead to MAX-SIGNIFICAND, which
+                     ;; would reset all bits to zero (loss of
+                     ;; accuracy); instead, we go up to the next
+                     ;; representable float.
+
+                     (when (= significand max-significand)
+                       (incf biased-exponent)
+                       (setf significand 0))
+
+                     (check-overflow)
+
+                     (encode sign
+                             significand
+                             (max 0 biased-exponent)
+                             remainder))))))))))
 
 (defun float-dice (exponent)
   (let ((offset (- (expt 2 (1- exponent))))
@@ -116,9 +121,9 @@
     (lambda (float)
       (back-and-forth-p float encoder #'dec exponent-bits significand-bits))))
 
-(defun make-encoder-closure (exponent-bits significand-bits special-p)
+(defun make-encoder-closure (exponent-bits significand-bits)
   (lambda (float)
-    (encode float exponent-bits significand-bits special-p)))
+    (encode float exponent-bits significand-bits)))
 
 (defun make-encoder-closure-for-original (original-encoder original-decoder)
   (lambda (float)
@@ -138,7 +143,8 @@
       collect float))
 
 
-(define-symbol-macro $ (back-and-forth 1000000 4 4 (make-encoder-closure 4 4 t)))
+(define-symbol-macro $
+    (back-and-forth 10000000 4 4 (make-encoder-closure 4 4)))
 
 
 
