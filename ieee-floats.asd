@@ -3,9 +3,9 @@
   :author "Marijn Haverbeke <marijnh@gmail.com>"
   :license "BSD"
   :components ((:file "ieee-floats"))
-  :in-order-to ((test-op (test-op "ieee-floats-tests"))))
+  :in-order-to ((test-op (test-op "ieee-floats/tests"))))
 
-(defsystem :ieee-floats-tests
+(defsystem :ieee-floats/tests
   :description "Test suite for ieee-floats"
   :author "Marijn Haverbeke <marijnh@gmail.com>"
   :license "BSD"

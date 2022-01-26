@@ -1,9 +1,9 @@
-(defpackage :ieee-floats-tests
+(defpackage :ieee-floats/tests
   (:use :common-lisp
         :ieee-floats
         :fiveam))
 
-(in-package :ieee-floats-tests)
+(in-package :ieee-floats/tests)
 
 ;; After loading, run the tests with (fiveam:run! :ieee-floats)
 
